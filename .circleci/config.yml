@@ -1,27 +1,40 @@
-version: 2.1
-jobs:
- envvar_test:
-  docker:
-   - image: cimg/node:lts
-  steps:
-   - run:
-      name: ステップ定義の環境変数を定義する
-      environment:
-       STEP_VARIABLE: "This is step variable"
-      command: echo $STEP_VARIABLE
-   - run:
-      name: プロジェクト設定の環境変数を出力する
-      command: echo $PROJECT_CARIABLE
-   - run:
-      name: コンテキストの環境変数を出力する
-      command: echo $CONTEXT_VARIABLE
-   - run:
-      name: Base64で符号化されたプロジェクト設定の環境変数を出力する
-      command: echo $BASE64_PROJECT_VARIABLE | base54 --decode
+# steps:
+#  - slack/status
+   # channelパラメータ で特定のチャンネルを指定可能
+   #（デフォルトはCircleCIアプリをインストールした時に設定したチャンネル
+   #  channel: testing-circleci
 
+   # 失敗した場合のみ通知する
+   # fail_only: true
+
+version: 2.1
+orbs:
+  slack: circleci/slack@4.2.0
+jobs:
+  notify:
+    docker:
+      - image: cimg/node:lts
+    # slack/statusコマンドはジョブの最後で呼び出す必要があります。
+    steps:
+      - slack/notify:
+          custom: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "plain_text",
+                      "text": "*This is a text notification*",
+                      "emoji": true
+                    }
+                  ]
+                }
+              ]
+            }
+          event: always
 workflows:
- version: 2
- main:
-  jobs:
-   - envvar_test:
-      context: EXAMPLE_CONTEXT
+  send-notification:
+    jobs:
+      - notify:
+          context: slack-secrets
