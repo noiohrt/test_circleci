@@ -1,40 +1,19 @@
-# steps:
-#  - slack/status
-   # channelパラメータ で特定のチャンネルを指定可能
-   #（デフォルトはCircleCIアプリをインストールした時に設定したチャンネル
-   #  channel: testing-circleci
-
-   # 失敗した場合のみ通知する
-   # fail_only: true
-
 version: 2.1
 orbs:
-  slack: circleci/slack@4.2.0
+   pr-comment: benjlevesque/pr-comment@0.1.4
 jobs:
-  notify:
-    docker:
-      - image: cimg/node:lts
-    # slack/statusコマンドはジョブの最後で呼び出す必要があります。
-    steps:
-      - slack/notify:
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "*This is a text notification*",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
-          event: always
+   pull_request_comment_test:
+      docker:
+         - image: cimg/node:lts
+      steps:
+         - checkout
+         - pr-comment/pr-comment:
+            comment: |
+               GitHubプルリクエストにコメント
+               ${CIRCLE_BUILD_URL}
+            maxComments: 10
 workflows:
-  send-notification:
-    jobs:
-      - notify:
-          context: SLACK_CONTEXT
+   version: 2
+   main:
+      jobs:
+         - pull_request_comment_test
