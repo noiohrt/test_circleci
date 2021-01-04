@@ -39,6 +39,8 @@ jobs:
                --reporters=default --reporters=jest-junit
             environment: # テストレポートの出力先を指定
                JEST_JUNIT_OUTPUT_DIR: "reports/jest"
+         - store_test_results: # レポートファイルを保存
+            path: reports
 workflows:
    version: 2
    build_test:
