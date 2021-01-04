@@ -1,52 +1,18 @@
-# 複数のジョブで再利用可能な実行環境を定義
-executors:
-   # デフォルトのDockerイメージ
-   default:
+version: 2
+jobs:
+   build:
       docker:
          - image: cimg/node:lts
-      working_directory: ~/repo
-
-version: 2.1
-jobs:
-   # 依存パッケージのインストールを行い、実行環境を構築するジョブ
-   setup:
-      executor: default
       steps:
+         # リモートリポジトリをチェックアウトして情報を取得
          - checkout
          - run:
-            name: Nodeモジュールのインストール
-            command: yarn install
-         # node_modules を永続化
-         - persist_to_workspace:
-            root: ~/repo
-            paths:
-               - node_modules
-   # テスト実行ジョブ
-   test_jest:
-      executor: default
-      steps:
-         - checkout
-         # node_modules をダウンロード
-         - attach_workspace:
-            at: .
-         - run:
-            name: jest-junitパッケージを追加
-            command: yarn add --dev jest-junit
-         - run:
-            name: Jest を実行
+            name: 2並列のテストファイル分割（1番目のコンテナ）
             command: |
-               npx jest --ci --maxWorkers=2 \
-               --reporters=default --reporters=jest-junit
-            environment: # テストレポートの出力先を指定
-               JEST_JUNIT_OUTPUT_DIR: "reports/jest"
-         - store_test_results: # レポートファイルを保存
-            path: reports
-workflows:
-   version: 2
-   build_test:
-      jobs:
-         - setup
-         - test_jest:
-            # setup の後に test_jest を実行
-            requires:
-               - setup
+               circleci tests glob "__tests__/*.ts" | \
+               circleci tests split --total=2 --index=0
+         - run:
+            name: 2並列のテストファイル分割（2番目のコンテナ）
+            command: |
+               circleci tests glob "__tests__/*.ts" | \
+               circleci tests split --total=2 --index=1
