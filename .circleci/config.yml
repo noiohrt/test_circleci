@@ -36,7 +36,7 @@ jobs:
             name: Jest を並行実行
             command: |
                npx jest --ci --maxWorkers=2 \
-               --reporters=default --reporters=jest-junit　\
+               --reporters=default --reporters=jest-junit \
                -- $(circleci tests glob "__tests__/*.ts" | \
                circleci tests split)
             environment: # テストレポートの出力先を指定
