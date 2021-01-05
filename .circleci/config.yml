@@ -1,54 +1,119 @@
-# 複数のジョブで再利用可能な実行環境を定義
-executors:
-   # デフォルトのDockerイメージ
-   default:
-      docker:
-         - image: cimg/node:lts
-      working_directory: ~/repo
-
 version: 2.1
 jobs:
-   # 依存パッケージのインストールを行い、実行環境を構築するジョブ
-   setup:
-      executor: default
+   # 環境依存モジュールをインストールする
+   install_deps:
+      # ステップの実行環境を宣言
+      docker:
+         - image: cimg/node:12.18
+      # ステップを定義
       steps:
+         # リポジトリからコードを取得（ビルドインステップ）
          - checkout
+
+         # ファイルキャッシュを復元
+         - restore_cache:
+            keys:
+               # 環境依存モジュールに変更有：新たにインストール
+               # 環境依存モジュールに変更無：キャッシュを使用
+               - v1-dependencies-{{checksum "package-lock.json"}}
+               # 古いキャッシュを復元し、環境依存モジュールのインストールを早める
+               - v1-dependencies-
+
          - run:
-            name: Nodeモジュールのインストール
-            command: yarn install
-         # node_modules を永続化
-         - persist_to_workspace:
-            root: ~/repo
+            name: 環境依存モジュールのインストール
+            command: npm install
+
+         # ファイルキャッシュを保存
+         - save_cache:
             paths:
                - node_modules
-   # テスト実行ジョブ
-   test_jest:
-      executor: default
+            key: v1-dependencies-{{checksum "package-lock.json"}}
+
+         # ワークスペースに永続化するファイル/ディレクトリを宣言
+         - persist_to_workspace:
+            root: ~/project # ワークスペースのルートディレクトリを宣言
+            paths: # 永続化させたいファイル/ディレクトリパスを指定
+               - node_modules/*
+
+   # テストを実施する
+   lint_and_test:
+      # パラメータを使って Nodeイメージ のバージョンを宣言
+      parameters:
+         node-version:
+            type: string
+            default: "12.18"
+      docker:
+         - image: cimg/node:<< parameters.node-version >>
       steps:
+         # リポジトリからコードを取得（ビルドインステップ）
          - checkout
-         # node_modules をダウンロード
+
+         # ジョブからワークスペースにアクセスするための設定
          - attach_workspace:
-            at: .
+            at: ~/project
+
+         # テストの実行結果を出力するディレクトリを作成
          - run:
-            name: jest-junitパッケージを追加
-            command: yarn add --dev jest-junit
+            name: 静的解析、テスト結果ファイルを出力するディレクトリを作成
+            command: mkdir reports
+
+         # 静的解析の実施と実行結果の出力
          - run:
-            name: Jest を並行実行
-            command: |
-               npx jest --ci --maxWorkers=2 \
-               --reporters=default --reporters=jest-junit \
-               -- $(circleci tests glob "__tests__/*.ts" | \
-               circleci tests split)
-            environment: # テストレポートの出力先を指定
-               JEST_JUNIT_OUTPUT_DIR: "reports/jest"
-         - store_test_results: # レポートファイルを保存
-            path: reports
+            name: コードの静的解析を実行
+            command: npx eslint ./src --ext .ts --format junit --output-file ./reports/eslint/eslint.xml
+
+         # ユニットテストを実行する
+         - run:
+            name: テストを実行
+            command: npx nyc --silent npm mocha ./test/*.test.ts --require ts-node/register --reporter mocha-junit-reporter
+
+         # カバレッジレポートを作成
+         - run:
+            name: コードカバレッジを作成
+            command: npx nyc report --reporter=lcov
+
+         # テスト結果を出力
+         - store_test_results:
+            path: ./reports
+
+         # CircleCI の TESTSタブ でテスト結果が確認できるように設定
+         - store_artifacts:
+            path: ./reports
+
+         # ユニットテスト、静的解析、カバレッジレポートを1つにまとめて ARTIFACTSタブ で確認できるように設定
+         - store_artifacts:
+            path: ./coverage
+
+   # ビルドを実施する
+   build:
+      # ステップの実行環境を宣言
+      docker:
+         - image: cimg/node:12.18
+      steps:
+         # リポジトリからコードを取得（ビルドインステップ）
+         - checkout
+
+         # ジョブからワークスペースにアクセスするための設定
+         - attach_workspace:
+            at: ~/project
+
+         - run:
+            name: TypeScriptコードをビルド
+            command: npx tsc
+
 workflows:
    version: 2
-   build_test:
+   main:
       jobs:
-         - setup
-         - test_jest:
-            # setup の後に test_jest を実行
+         - install_deps
+         - lint_and_test:
+            # Nodeバージョン12.18と最新の2パターンでテストを実施
+            matrix:
+               parameters:
+                  node-version: ["12.18", "current"]
             requires:
-               - setup
+               - install_deps
+         - build:
+            # Nodeバージョン12.18と最新の両方で実施したテストをパスしたら実行する
+            requires:
+               - lint_and_test
